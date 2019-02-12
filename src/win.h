@@ -7,6 +7,12 @@
 #include <xcb/render.h>
 #include <xcb/damage.h>
 
+// This macro is here because this is the maximum number
+// of blur passes options_t can hold, not a limitation of
+// rendering.
+/// @brief Maximum passes for blur.
+#define MAX_BLUR_PASS 6
+
 // FIXME shouldn't need this
 #ifdef CONFIG_OPENGL
 #include <GL/gl.h>
@@ -30,12 +36,17 @@ typedef struct {
   /// Framebuffer used for blurring.
   GLuint fbo;
   /// Textures used for blurring.
-  GLuint textures[2];
+  GLuint textures[MAX_BLUR_PASS];
   /// Width of the textures.
   int width;
   /// Height of the textures.
   int height;
 } glx_blur_cache_t;
+
+typedef struct {
+  int iterations;
+  float offset;
+} blur_strength_t;
 #endif
 
 typedef enum {

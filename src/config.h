@@ -46,6 +46,12 @@ enum backend {
 	NUM_BKEND,
 };
 
+typedef enum {
+	BLRMTHD_CONV,
+	BLRMTHD_KAWASE,
+	NUM_BLRMTHD
+} blur_method_t;
+
 typedef struct win_option_mask {
 	bool shadow : 1;
 	bool fade : 1;
@@ -65,12 +71,6 @@ typedef struct win_option {
 } win_option_t;
 
 typedef struct _c2_lptr c2_lptr_t;
-
-// This macro is here because this is the maximum number
-// of blur passes options_t can hold, not a limitation of
-// rendering.
-/// @brief Maximum passes for blur.
-#define MAX_BLUR_PASS 5
 
 /// Structure representing all options.
 typedef struct options_t {
@@ -207,8 +207,12 @@ typedef struct options_t {
 	bool blur_background_fixed;
 	/// Background blur blacklist. A linked list of conditions.
 	c2_lptr_t *blur_background_blacklist;
+	/// Blur method.
+	blur_method_t blur_method;
 	/// Blur convolution kernel.
 	xcb_render_fixed_t *blur_kerns[MAX_BLUR_PASS];
+	/// Blur strength
+	blur_strength_t blur_strength;
 	/// How much to dim an inactive window. 0.0 - 1.0, 0 to disable.
 	double inactive_dim;
 	/// Whether to use fixed inactive dim opacity, instead of deciding
@@ -244,6 +248,7 @@ typedef struct options_t {
 
 extern const char *const VSYNC_STRS[NUM_VSYNC + 1];
 extern const char *const BACKEND_STRS[NUM_BKEND + 1];
+extern const char * const BLUR_METHOD_STRS[NUM_BLRMTHD + 1];
 
 attr_warn_unused_result bool parse_long(const char *, long *);
 attr_warn_unused_result const char *parse_matrix_readnum(const char *, double *);
@@ -364,6 +369,57 @@ static inline vsync_t parse_vsync(const char *str) {
 
 	log_error("Invalid vsync argument: %s", str);
 	return NUM_VSYNC;
+}
+
+/**
+ * Parse a blur_method option argument.
+ */
+static inline blur_method_t parse_blur_method(const char *str) {
+  for (blur_method_t i = 0; BLUR_METHOD_STRS[i]; ++i)
+    if (!strcasecmp(str, BLUR_METHOD_STRS[i])) {
+      return i;
+    }
+
+  log_error("Invalid blur_method argument: %s", str);
+  return NUM_BLRMTHD;
+}
+
+/**
+ * Parse a blur_strength option argument.
+ */
+static inline bool parse_blur_strength(blur_strength_t* dest, const int level) {
+  static const blur_strength_t values[20] = {
+    { .iterations = 1, .offset = 1.5 },     // 1
+    { .iterations = 1, .offset = 2.0 },     // 2
+    { .iterations = 2, .offset = 2.5 },     // 3
+    { .iterations = 2, .offset = 3.0 },     // 4
+    { .iterations = 3, .offset = 2.75 },    // 5
+    { .iterations = 3, .offset = 3.5 },     // 6
+    { .iterations = 3, .offset = 4.25 },    // 7
+    { .iterations = 3, .offset = 5.0 },     // 8
+    { .iterations = 4, .offset = 3.71429 }, // 9
+    { .iterations = 4, .offset = 4.42857 }, // 10
+    { .iterations = 4, .offset = 5.14286 }, // 11
+    { .iterations = 4, .offset = 5.85714 }, // 12
+    { .iterations = 4, .offset = 6.57143 }, // 13
+    { .iterations = 4, .offset = 7.28571 }, // 14
+    { .iterations = 4, .offset = 8.0 },     // 15
+    { .iterations = 5, .offset = 6.0 },     // 16
+    { .iterations = 5, .offset = 7.0 },     // 17
+    { .iterations = 5, .offset = 8.0 },     // 18
+    { .iterations = 5, .offset = 9.0 },     // 19
+    { .iterations = 5, .offset = 10.0 },    // 20
+  };
+
+  if (level < 1 || level > 20) {
+    log_error("Invalid blur_strength argument: %d. Needs to be a number between 1 and 20.", level);
+    return false;
+  }
+
+  dest->iterations = values[level - 1].iterations;
+  dest->offset = values[level - 1].offset;
+  
+  return true;
 }
 
 // vim: set noet sw=8 ts=8 :

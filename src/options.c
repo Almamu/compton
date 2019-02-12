@@ -245,7 +245,16 @@ static void usage(int ret) {
 	    "  Use fixed blur strength instead of adjusting according to window\n"
 	    "  opacity.\n"
 	    "\n"
+	    "--blur-method algorithm\n"
+	    "  Specify the algorithm for background blur. It is either one of:\n"
+	    "    convolution (default), kawase\n"
+	    "\n"
+	    "--blur-strength level\n"
+	    "  Only valid for '--blur-method kawase'!\n"
+	    "  The strength of the kawase blur as an integer between 1 and 20. Defaults to 5.\n"
+	    "\n"
 	    "--blur-kern matrix\n"
+	    "  Only valid for '--blur-method convolution'!\n"
 	    "  Specify the blur convolution kernel, with the following format:\n"
 	    "    WIDTH,HEIGHT,ELE1,ELE2,ELE3,ELE4,ELE5...\n"
 	    "  The element in the center must not be included, it will be forever\n"
@@ -460,6 +469,8 @@ static const struct option longopts[] = {
     {"no-name-pixmap", no_argument, NULL, 320},
     {"log-level", required_argument, NULL, 321},
     {"log-file", required_argument, NULL, 322},
+    {"blur-method", required_argument, NULL, 323},
+    {"blur-strength", required_argument, NULL, 324},
     {"reredir-on-root-change", no_argument, NULL, 731},
     {"glx-reinit-on-root-change", no_argument, NULL, 732},
     {"monitor-repaint", no_argument, NULL, 800},
@@ -789,6 +800,16 @@ void get_cfg(options_t *opt, int argc, char *const *argv, bool shadow_enable,
 			}
 			break;
 		}
+		case 323:
+			// --vsync
+			opt->blur_method = parse_blur_method(optarg);
+			if (opt->blur_method >= NUM_BLRMTHD)
+				exit(1);
+			break;
+		case 324:
+			if (!parse_blur_strength(&opt->blur_strength, strtol(optarg, NULL, 0)))
+				exit(1);
+			break;
 		P_CASEBOOL(319, no_x_selection);
 		P_CASEBOOL(731, reredir_on_root_change);
 		P_CASEBOOL(732, glx_reinit_on_root_change);
@@ -839,7 +860,7 @@ void get_cfg(options_t *opt, int argc, char *const *argv, bool shadow_enable,
 	}
 
 	// Fill default blur kernel
-	if (opt->blur_background && !opt->blur_kerns[0]) {
+	if (opt->blur_background && (BLRMTHD_CONV == opt->blur_method) && !opt->blur_kerns[0]) {
 		// Convolution filter parameter (box blur)
 		// gaussian or binomial filters are definitely superior, yet looks
 		// like they aren't supported as of xorg-server-1.13.0
@@ -869,6 +890,11 @@ void get_cfg(options_t *opt, int argc, char *const *argv, bool shadow_enable,
 	if (opt->backend == BKEND_XRENDER && conv_kern_hasneg)
 		log_warn("A convolution kernel with negative values may not work "
 		         "properly under X Render backend.");
+
+	if (opt->backend != BKEND_GLX && opt->blur_method == BLRMTHD_KAWASE) {
+		log_error ("Blur method 'kawase' is only compatible with the GLX backend. Fall back to default.");
+		opt->blur_method = BLRMTHD_CONV;
+	}
 }
 
 // vim: set noet sw=8 ts=8 :

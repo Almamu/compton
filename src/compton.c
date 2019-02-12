@@ -142,6 +142,12 @@ const char * const BACKEND_STRS[NUM_BKEND + 1] = {
   NULL
 };
 
+const char * const BLUR_METHOD_STRS[NUM_BLRMTHD + 1] = {
+  "convultion", // BLRMTHD_CONF
+  "kawase",     // BLRMTHD_KAWASE
+  NULL
+};
+
 // === Global variables ===
 
 /// Pointer to current session, as a global variable. Only used by
@@ -2532,7 +2538,9 @@ session_init(int argc, char **argv, Display *dpy, const char *config_file,
       .blur_background_frame = false,
       .blur_background_fixed = false,
       .blur_background_blacklist = NULL,
+      .blur_method = BLRMTHD_CONV,
       .blur_kerns = { NULL },
+      .blur_strength = { .iterations = 3, .offset = 2.75 },
       .inactive_dim = 0.0,
       .inactive_dim_fixed = false,
       .invert_color_list = NULL,
