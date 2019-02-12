@@ -296,17 +296,17 @@ fade_timeout(session_t *ps) {
  *
  * @param steps steps of fading
  */
-static void
+static bool
 run_fade(session_t *ps, win **_w, unsigned steps) {
   win *w = *_w;
   if (w->state == WSTATE_MAPPED || w->state == WSTATE_UNMAPPED) {
     // We are not fading
-    return;
+    return false;
   }
   if (w->opacity == w->opacity_tgt) {
-    // We have reached target opacity, return
+    // We have reached target opacity, wrapping up
     win_check_fade_finished(ps, _w);
-    return;
+    return false;
   }
 
   if (steps) {
@@ -321,9 +321,7 @@ run_fade(session_t *ps, win **_w, unsigned steps) {
     }
   }
 
-  if (w->opacity != w->opacity_tgt) {
-    ps->fade_running = true;
-  }
+  return w->opacity != w->opacity_tgt;
 }
 
 // === Error handling ===
@@ -480,8 +478,11 @@ find_client_win(session_t *ps, xcb_window_t w) {
 }
 
 static win *
-paint_preprocess(session_t *ps, win *list) {
+paint_preprocess(session_t *ps, win *list, bool *fade_running) {
+  // XXX need better, more general name for `fade_running`. It really
+  // means if fade is still ongoing after the current frame is rendered
   win *t = NULL, *next = NULL;
+  *fade_running = false;
 
   // Fading step calculation
   unsigned long steps = 0L;
@@ -515,7 +516,7 @@ paint_preprocess(session_t *ps, win *list) {
     }
 
     // Run fading
-    run_fade(ps, &w, steps);
+    *fade_running = *fade_running || run_fade(ps, &w, steps);
     if (!w) {
       // the window might have been destroyed because fading finished
       continue;
@@ -2086,14 +2087,14 @@ _draw_callback(EV_P_ session_t *ps, int revents) {
     }
   }
 
-  ps->fade_running = false;
-  win *t = paint_preprocess(ps, ps->list);
+  bool fade_running = false;
+  win *t = paint_preprocess(ps, ps->list, &fade_running);
   ps->tmout_unredir_hit = false;
 
   // Start/stop fade timer depends on whether window are fading
-  if (!ps->fade_running && ev_is_active(&ps->fade_timer))
+  if (!fade_running && ev_is_active(&ps->fade_timer))
     ev_timer_stop(ps->loop, &ps->fade_timer);
-  else if (ps->fade_running && !ev_is_active(&ps->fade_timer)) {
+  else if (fade_running && !ev_is_active(&ps->fade_timer)) {
     ev_timer_set(&ps->fade_timer, fade_timeout(ps), 0);
     ev_timer_start(ps->loop, &ps->fade_timer);
   }
@@ -2108,7 +2109,7 @@ _draw_callback(EV_P_ session_t *ps, int revents) {
       exit(0);
   }
 
-  if (!ps->fade_running)
+  if (!fade_running)
     ps->fade_time = 0L;
 
   ps->redraw_needed = false;
@@ -2301,7 +2302,6 @@ session_init(int argc, char **argv, Display *dpy, const char *config_file,
     .time_start = { 0, 0 },
     .redirected = false,
     .alpha_picts = NULL,
-    .fade_running = false,
     .fade_time = 0L,
     .ignore_head = NULL,
     .ignore_tail = NULL,
@@ -2916,7 +2916,9 @@ session_run(session_t *ps) {
   if (ps->o.sw_opti)
     ps->paint_tm_offset = get_time_timeval().tv_usec;
 
-  t = paint_preprocess(ps, ps->list);
+  bool fade_running;
+  t = paint_preprocess(ps, ps->list, &fade_running);
+  assert(!fade_running);
 
   if (ps->redirected)
     paint_all(ps, t, true);
